@@ -20,15 +20,18 @@ const tempDir = "storeDir/tempDir"
 
 func saveTarball(name string, gz io.Reader, meta io.Writer) error {
 	tmpIndex, err := ioutil.TempFile(tempDir, "index")
-	defer tmpIndex.Close()
 	if err != nil {
 		return err
 	}
+	defer tmpIndex.Close()
+	defer os.Remove(tmpIndex.Name())
+
 	enc := gob.NewEncoder(tmpIndex)
 	tb, err := gzip.NewReader(gz)
 	if err != nil {
 		return err
 	}
+	defer tb.Close()
 	tarReader := tar.NewReader(tb)
 
 	for {
@@ -50,7 +53,6 @@ func saveTarball(name string, gz io.Reader, meta io.Writer) error {
 		switch header.Typeflag {
 		case tar.TypeReg:
 			tmpfile, err := ioutil.TempFile(tempDir, "data")
-			defer tmpfile.Close()
 			if err != nil {
 				return err
 			}
@@ -65,9 +67,10 @@ func saveTarball(name string, gz io.Reader, meta io.Writer) error {
 			// this needs better error checking
 			if _, err = os.Stat(destFile); os.IsNotExist(err) {
 				os.Rename(tmpfile.Name(), path.Join(destDir, md5sum))
-			} else {
-				os.Remove(tmpfile.Name())
 			}
+			// it's fine if this fails
+			tmpfile.Close()
+			os.Remove(tmpfile.Name())
 			err = enc.Encode(md5sum)
 			if err != nil {
 				return err
@@ -79,19 +82,17 @@ func saveTarball(name string, gz io.Reader, meta io.Writer) error {
 	// save the index
 	destIndexFile := path.Join(indexDir, name)
 	_, err = os.Stat(destIndexFile)
-	if err != nil && os.IsNotExist(err) {
-		os.Rename(tmpIndex.Name(), destIndexFile)
-	} else if err != nil {
-		return err
+	// overwrite if needed
+	if err != nil && os.IsExist(err) {
+		os.Remove(destIndexFile)
 	}
+	os.Rename(tmpIndex.Name(), destIndexFile)
 	return nil
 }
 
 func fetchTarBall(name string, w io.Writer) error {
 	indexFile := path.Join(indexDir, name)
-	fmt.Println("Looking for " + indexFile)
 	if _, err := os.Stat(indexFile); os.IsNotExist(err) {
-		fmt.Println("failed")
 		return err
 	}
 	f, err := os.Open(indexFile)
@@ -107,10 +108,8 @@ func fetchTarBall(name string, w io.Writer) error {
 	for {
 		var header tar.Header
 		err := dec.Decode(&header)
-		fmt.Println(header)
 		if err != nil {
 			if err == io.EOF {
-				fmt.Println("bailing")
 				break
 			}
 			return err
@@ -140,7 +139,6 @@ func handle(w http.ResponseWriter, r *http.Request) {
 
 	// strip leading '/'
 	filename := r.URL.Path[1:]
-	fmt.Println(filename)
 
 	switch m := r.Method; m {
 	case http.MethodGet:
@@ -163,7 +161,7 @@ func handle(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	portNumber := "6515"
+	portNumber := "12625"
 
 	// create dirs
 	os.MkdirAll(dataDir, 0755)
@@ -171,7 +169,7 @@ func main() {
 	os.MkdirAll(indexDir, 0755)
 	mux := http.NewServeMux()
 	httpServer := &http.Server{
-		Addr:         "127.0.0.1:" + portNumber,
+		Addr:         "0.0.0.0:" + portNumber,
 		Handler:      mux,
 		ReadTimeout:  0,
 		WriteTimeout: 0,
