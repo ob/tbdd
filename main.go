@@ -3,7 +3,7 @@ package main
 import (
 	"archive/tar"
 	"compress/gzip"
-	"crypto/md5"
+	"crypto/sha256"
 	"encoding/gob"
 	"encoding/hex"
 	"fmt"
@@ -56,7 +56,7 @@ func saveTarball(name string, gz io.Reader, meta io.Writer) error {
 			if err != nil {
 				return err
 			}
-			hash := md5.New()
+			hash := sha256.New()
 			multiwriter := io.MultiWriter(hash, tmpfile)
 			io.Copy(multiwriter, tarReader)
 			md5sum := hex.EncodeToString(hash.Sum(nil))
@@ -118,12 +118,12 @@ func fetchTarBall(name string, w io.Writer) error {
 		if header.Typeflag != tar.TypeReg {
 			continue
 		}
-		var md5sum string
-		err = dec.Decode(&md5sum)
+		var sha256 string
+		err = dec.Decode(&sha256)
 		if err != nil {
 			return err
 		}
-		dataFile := path.Join(dataDir, md5sum[:2], md5sum)
+		dataFile := path.Join(dataDir, sha256[:2], sha256)
 		data, err := os.Open(dataFile)
 		if err != nil {
 			return err
