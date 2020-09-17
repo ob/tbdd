@@ -6,9 +6,10 @@ import (
 	"crypto/sha256"
 	"encoding/gob"
 	"encoding/hex"
-	"fmt"
+	"flag"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"path"
@@ -142,26 +143,30 @@ func handle(w http.ResponseWriter, r *http.Request) {
 
 	switch m := r.Method; m {
 	case http.MethodGet:
-		fmt.Println("Fetching: " + filename)
+		log.Println("Fetching: " + filename)
 		w.Header().Set("Content-Type", "application/gzip")
 		err := fetchTarBall(filename, w)
 		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 		}
 	case http.MethodPut:
-		fmt.Println("Stashing: " + filename)
+		log.Println("Stashing: " + filename)
 		err := saveTarball(filename, r.Body, ioutil.Discard)
 		if err != nil {
-			fmt.Println(err)
+			log.Println(err)
 		}
 	default:
-		fmt.Println("Dunno what to do!")
+		log.Println("Dunno what to do!")
 		http.Error(w, "Dunno what you mean dude", http.StatusMethodNotAllowed)
 	}
 }
 
 func main() {
-	portNumber := "12625"
+	var port string
+	var bindAddr string
+	flag.StringVar(&bindAddr, "host", "0.0.0.0", "address to listen on")
+	flag.StringVar(&port, "port", "12625", "port on which to listen to")
+	flag.Parse()
 
 	// create dirs
 	os.MkdirAll(dataDir, 0755)
@@ -169,12 +174,12 @@ func main() {
 	os.MkdirAll(indexDir, 0755)
 	mux := http.NewServeMux()
 	httpServer := &http.Server{
-		Addr:         "0.0.0.0:" + portNumber,
+		Addr:         bindAddr + ":" + port,
 		Handler:      mux,
 		ReadTimeout:  0,
 		WriteTimeout: 0,
 	}
 	mux.HandleFunc("/", handle)
-	fmt.Printf("Server listening on http://%s\n", httpServer.Addr)
+	log.Printf("Server listening on http://%s\n", httpServer.Addr)
 	httpServer.ListenAndServe()
 }
