@@ -43,9 +43,9 @@ func New(dir string) *Storage {
 	}
 }
 
-// SaveTarball stores a tarball
-func (s *Storage) SaveTarball(name string, gz io.Reader, meta io.Writer) error {
-	tmpIndex, err := ioutil.TempFile(s.tmpDir, "index")
+// PutTarball stores a tarball
+func (s *Storage) PutTarball(name string, gz io.Reader) error {
+	tmpIndex, err := ioutil.TempFile(s.tmpDir, "index-*")
 	if err != nil {
 		return err
 	}
@@ -62,14 +62,13 @@ func (s *Storage) SaveTarball(name string, gz io.Reader, meta io.Writer) error {
 
 	for {
 		header, err := tarReader.Next()
-
 		if err == io.EOF {
 			break
 		}
-
 		if err != nil {
 			return err
 		}
+
 		// save metadata
 		err = enc.Encode(header)
 		if err != nil {
@@ -78,26 +77,26 @@ func (s *Storage) SaveTarball(name string, gz io.Reader, meta io.Writer) error {
 
 		switch header.Typeflag {
 		case tar.TypeReg:
-			tmpfile, err := ioutil.TempFile(s.tmpDir, "data")
+			tmpfile, err := ioutil.TempFile(s.tmpDir, "data-*")
 			if err != nil {
 				return err
 			}
 			hash := sha256.New()
 			multiwriter := io.MultiWriter(hash, tmpfile)
 			io.Copy(multiwriter, tarReader)
-			md5sum := hex.EncodeToString(hash.Sum(nil))
+			checksum := hex.EncodeToString(hash.Sum(nil))
 			// store it
-			destDir := path.Join(s.dataDir, md5sum[:2])
+			destDir := path.Join(s.dataDir, checksum[:2])
 			os.MkdirAll(destDir, 0755)
-			destFile := path.Join(destDir, md5sum)
+			destFile := path.Join(destDir, checksum)
 			// this needs better error checking
 			if _, err = os.Stat(destFile); os.IsNotExist(err) {
-				os.Rename(tmpfile.Name(), path.Join(destDir, md5sum))
+				os.Rename(tmpfile.Name(), path.Join(destDir, checksum))
 			}
 			// it's fine if this fails
 			tmpfile.Close()
 			os.Remove(tmpfile.Name())
-			err = enc.Encode(md5sum)
+			err = enc.Encode(checksum)
 			if err != nil {
 				return err
 			}
@@ -116,8 +115,8 @@ func (s *Storage) SaveTarball(name string, gz io.Reader, meta io.Writer) error {
 	return nil
 }
 
-// FetchTarball ...
-func (s *Storage) FetchTarball(name string, w io.Writer) error {
+// GetTarball ...
+func (s *Storage) GetTarball(name string, w io.Writer) error {
 	indexFile := path.Join(s.indexDir, name)
 	if _, err := os.Stat(indexFile); os.IsNotExist(err) {
 		return err
@@ -145,12 +144,12 @@ func (s *Storage) FetchTarball(name string, w io.Writer) error {
 		if header.Typeflag != tar.TypeReg {
 			continue
 		}
-		var sha256 string
-		err = dec.Decode(&sha256)
+		var checksum string
+		err = dec.Decode(&checksum)
 		if err != nil {
 			return err
 		}
-		dataFile := path.Join(s.dataDir, sha256[:2], sha256)
+		dataFile := path.Join(s.dataDir, checksum[:2], checksum)
 		data, err := os.Open(dataFile)
 		if err != nil {
 			return err
@@ -170,20 +169,20 @@ func (s *Storage) RequestHandler(w http.ResponseWriter, r *http.Request) {
 
 	switch m := r.Method; m {
 	case http.MethodGet:
-		log.Println("Fetching: " + filename)
+		log.Println("Getting: " + filename)
 		w.Header().Set("Content-Type", "application/gzip")
-		err := s.FetchTarball(filename, w)
+		err := s.GetTarball(filename, w)
 		if err != nil {
 			log.Println(err)
 		}
 	case http.MethodPut:
-		log.Println("Stashing: " + filename)
-		err := s.SaveTarball(filename, r.Body, ioutil.Discard)
+		log.Println("Putting: " + filename)
+		err := s.PutTarball(filename, r.Body)
 		if err != nil {
 			log.Println(err)
 		}
 	default:
-		log.Println("Dunno what to do!")
-		http.Error(w, "Dunno what you mean dude", http.StatusMethodNotAllowed)
+		log.Printf("HTTP method not implemented: %v", m)
+		http.Error(w, "Unimplemented HTTP method", http.StatusMethodNotAllowed)
 	}
 }
