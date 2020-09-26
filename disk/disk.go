@@ -26,7 +26,7 @@ type Storage struct {
 }
 
 // New returns a new Cache
-func New(dir string, maxSizeBytes int64) *Storage {
+func New(dir string) *Storage {
 	dataDir := path.Join(dir, "data")
 	indexDir := path.Join(dir, "index")
 	tmpDir := path.Join(dir, "tmp")

@@ -28,7 +28,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	storage := disk.New(dir, 0)
+	storage := disk.New(dir)
 	mux := http.NewServeMux()
 	httpServer := &http.Server{
 		Addr:         bindAddr + ":" + port,
